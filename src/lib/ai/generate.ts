@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { getVercelOidcToken } from "@vercel/oidc";
 import { z } from "zod";
 import type { EmailDraft } from "@/lib/types";
 import {
@@ -25,7 +26,47 @@ export class AIGenerationError extends Error {}
 
 const MODEL = process.env.AI_MODEL ?? "claude-opus-5-5";
 
-let client: Anthropic | undefined;
+/**
+ * Due strade verso lo stesso modello, sempre con l'SDK Anthropic:
+ *  - ANTHROPIC_API_KEY: chiamata diretta all'API di Anthropic;
+ *  - su Vercel, senza chiave: Vercel AI Gateway, che espone la stessa
+ *    Messages API e autentica la funzione con il suo token OIDC. I consumi
+ *    finiscono sul conto Vercel del progetto.
+ */
+export function aiConfigured(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.VERCEL);
+}
+
+async function resolveClient(): Promise<{ client: Anthropic; model: string }> {
+  if (process.env.ANTHROPIC_API_KEY) return { client: new Anthropic(), model: MODEL };
+
+  let apiKey = process.env.AI_GATEWAY_API_KEY;
+  if (!apiKey && process.env.VERCEL) {
+    try {
+      apiKey = await getVercelOidcToken();
+    } catch {
+      throw new AIGenerationError("Assistente AI non raggiungibile: token Vercel non disponibile per questa funzione.");
+    }
+  }
+  if (!apiKey) throw new AIGenerationError("Assistente AI non configurato: imposta ANTHROPIC_API_KEY.");
+
+  return {
+    client: new Anthropic({ apiKey, baseURL: "https://ai-gateway.vercel.sh" }),
+    model: MODEL.includes("/") ? MODEL : `anthropic/${MODEL}`,
+  };
+}
+
+function parseLooseJson(text: string): EmailDraft | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    const parsed = DraftSchema.safeParse(JSON.parse(text.slice(start, end + 1)));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Genera la bozza di un'email. Con `revision` la richiesta diventa una
@@ -33,10 +74,10 @@ let client: Anthropic | undefined;
  * dell'utente. Così il modello corregge la bozza invece di ripartire da zero.
  */
 export async function generateEmailDraft(ctx: EmailContext, revision?: Revision): Promise<EmailDraft> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new AIGenerationError("Assistente AI non configurato: imposta ANTHROPIC_API_KEY.");
-  }
-  client ??= new Anthropic();
+  const { client, model } = await resolveClient();
+  const system: Anthropic.TextBlockParam[] = [
+    { type: "text", text: buildSystemPrompt(ctx.workspace, ctx.senderName), cache_control: { type: "ephemeral" } },
+  ];
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: buildContextMessage(ctx) }];
   if (revision) {
@@ -47,19 +88,37 @@ export async function generateEmailDraft(ctx: EmailContext, revision?: Revision)
   }
 
   try {
-    const response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 16000,
-      system: [
-        {
-          type: "text",
-          text: buildSystemPrompt(ctx.workspace, ctx.senderName),
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages,
-      output_config: { effort: "medium", format: zodOutputFormat(DraftSchema) },
-    });
+    let response;
+    try {
+      response = await client.messages.parse({
+        model,
+        max_tokens: 16000,
+        system,
+        messages,
+        output_config: { effort: "medium", format: zodOutputFormat(DraftSchema) },
+      });
+    } catch (error) {
+      // Un intermediario che non inoltra l'output strutturato risponde 400:
+      // si ripiega sul JSON richiesto a parole e letto dal testo.
+      if (!(error instanceof Anthropic.BadRequestError)) throw error;
+      console.warn("Output strutturato rifiutato, ripiego sul JSON nel testo:", error.message);
+      const plain = await client.messages.create({
+        model,
+        max_tokens: 16000,
+        system,
+        messages: [
+          ...messages,
+          {
+            role: "user",
+            content: 'Rispondi soltanto con un oggetto JSON di questa forma, senza altro testo: {"subject": "...", "body": "..."}',
+          },
+        ],
+      });
+      const text = plain.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+      const draft = plain.stop_reason === "refusal" ? null : parseLooseJson(text);
+      if (!draft) throw new AIGenerationError("La bozza è arrivata in un formato non leggibile. Riprova.");
+      return { subject: draft.subject.trim(), body: draft.body.trim() };
+    }
 
     if (response.stop_reason === "refusal") {
       throw new AIGenerationError("L'assistente non ha potuto elaborare questa richiesta.");
@@ -72,8 +131,11 @@ export async function generateEmailDraft(ctx: EmailContext, revision?: Revision)
     return { subject: subject.trim(), body: body.trim() };
   } catch (error) {
     if (error instanceof AIGenerationError) throw error;
-    if (error instanceof Anthropic.AuthenticationError) {
-      throw new AIGenerationError("Chiave API dell'assistente non valida.");
+    if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
+      throw new AIGenerationError("Accesso all'assistente AI rifiutato: chiave non valida o AI Gateway non attivo sul conto Vercel.");
+    }
+    if (error instanceof Anthropic.APIError && error.status === 402) {
+      throw new AIGenerationError("Credito AI esaurito sul conto Vercel: aggiungi credito in Vercel → AI Gateway.");
     }
     if (error instanceof Anthropic.RateLimitError) {
       throw new AIGenerationError("Troppe richieste all'assistente in questo momento. Riprova tra poco.");

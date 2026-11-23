@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AIGenerationError, generateEmailDraft } from "@/lib/ai/generate";
+import { AIGenerationError, aiConfigured, generateEmailDraft } from "@/lib/ai/generate";
 import { dispatchEmail } from "@/lib/email/dispatch";
 import type { Contact, ContactNote, Email, EmailSettings, PipelineStage, Workspace } from "@/lib/types";
 import { canReadReplies, fetchReplies } from "./replies";
@@ -281,7 +281,7 @@ export async function runAutomationBatch(
   if (!workspace.automation_enabled) return { sent: 0, remaining: 0, error: null };
   const scope = await loadScope(supabase, workspace);
   if (!scope.settings) return fail("Configura l'invio email prima di avviare l'automazione.");
-  if (!process.env.ANTHROPIC_API_KEY) return fail("Assistente AI non configurato: manca la chiave Anthropic.");
+  if (!aiConfigured()) return fail("Assistente AI non configurato.");
 
   const replyError = await syncReplies(supabase, workspace);
   const blocked = replyError ?? followUpsBlockedReason(scope);
