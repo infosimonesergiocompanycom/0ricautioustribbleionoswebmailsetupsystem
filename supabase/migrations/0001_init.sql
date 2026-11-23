@@ -456,8 +456,13 @@ create policy activities_select on public.activities for select to authenticated
 -- -----------------------------------------------------------------------------
 -- Privilegi
 -- -----------------------------------------------------------------------------
+-- I privilegi sono espliciti: non si fa affidamento sui default del progetto.
+-- L'accesso effettivo alle righe resta deciso dalle policy RLS.
 revoke all on all tables in schema public from anon;
 revoke execute on all functions in schema public from public, anon;
+grant usage on schema public to authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant all on all tables in schema public to service_role;
 grant execute on function public.is_workspace_member(uuid) to authenticated;
 grant execute on function public.is_workspace_admin(uuid) to authenticated;
 grant execute on function public.create_workspace(text, text, text, text) to authenticated;

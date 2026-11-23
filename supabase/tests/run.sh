@@ -17,6 +17,7 @@ psql=("$PGBIN/psql" -h 127.0.0.1 -p "$port" -U postgres -v ON_ERROR_STOP=1 -q)
 "${psql[@]}" <<'SQL'
 create role anon nologin;
 create role authenticated nologin;
+create role service_role nologin bypassrls;
 create schema auth;
 create table auth.users (
   id uuid primary key default gen_random_uuid(),
@@ -32,5 +33,5 @@ alter default privileges in schema public grant all on tables to anon, authentic
 alter default privileges in schema public grant execute on functions to anon, authenticated;
 SQL
 
-"${psql[@]}" -f "$here/../migrations/0001_init.sql"
+for f in "$here"/../migrations/*.sql; do "${psql[@]}" -f "$f"; done
 "${psql[@]}" -f "$here/rls_isolation.sql"
