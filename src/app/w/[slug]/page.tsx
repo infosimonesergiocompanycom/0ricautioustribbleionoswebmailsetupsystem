@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AutomationPanel } from "@/components/automation/automation-panel";
 import { TodoList } from "@/components/dashboard/todo-list";
+import { automationOverview } from "@/lib/automation/engine";
 import { formatDateTime, formatLongDate, greeting } from "@/lib/format";
 import { buildTodoList } from "@/lib/secretary/todo";
 import { listStages, requireUser, requireWorkspace } from "@/lib/session";
@@ -9,6 +11,8 @@ import type { Contact } from "@/lib/types";
 import { fullName } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Oggi" };
+// Il pannello dell'automazione invia a gruppi tramite server action su questa pagina.
+export const maxDuration = 60;
 
 interface ScheduledEmail {
   id: string;
@@ -17,10 +21,11 @@ interface ScheduledEmail {
   contact: Pick<Contact, "id" | "first_name" | "last_name"> | null;
 }
 
-function summary(count: number): string {
-  if (count === 0) return "Oggi non c'è nessuno in attesa di una tua parola.";
-  if (count === 1) return "Oggi c'è una persona che conviene ricontattare. Ecco chi è, e perché.";
-  return `Oggi ci sono ${count} persone che conviene ricontattare. Ecco chi sono, e perché.`;
+function summary(count: number, automated: boolean): string {
+  const tail = automated ? " Al resto pensa l'automazione." : "";
+  if (count === 0) return `Oggi non c'è nessuno in attesa di una tua parola.${tail}`;
+  if (count === 1) return `Oggi c'è una persona che richiede la tua attenzione. Ecco chi è, e perché.${tail}`;
+  return `Oggi ci sono ${count} persone che richiedono la tua attenzione. Ecco chi sono, e perché.${tail}`;
 }
 
 export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) {
@@ -34,7 +39,7 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
   const stages = await listStages(workspace.id);
   const openStageIds = stages.filter((s) => s.kind === "open").map((s) => s.id);
 
-  const [{ data: contacts }, { data: profile }, { count: sentThisWeek }, { data: scheduled }] = await Promise.all([
+  const [{ data: contacts }, { data: profile }, { count: sentThisWeek }, { data: scheduled }, overview] = await Promise.all([
     supabase
       .from("contacts")
       .select("*")
@@ -56,14 +61,20 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
       .order("scheduled_at")
       .limit(5)
       .returns<ScheduledEmail[]>(),
+    automationOverview(supabase, workspace),
   ]);
 
-  const todo = buildTodoList(contacts ?? [], stages, now);
+  const todo = buildTodoList(
+    contacts ?? [],
+    stages,
+    now,
+    workspace.automation_enabled ? { maxFollowUps: workspace.max_follow_ups } : undefined,
+  );
   const firstName = profile?.full_name?.split(" ")[0];
 
   const stats = [
     { label: "Trattative aperte", value: contacts?.length ?? 0 },
-    { label: "Da ricontattare", value: todo.length },
+    { label: "Richiedono te", value: todo.length },
     { label: "Email inviate in 7 giorni", value: sentThisWeek ?? 0 },
   ];
 
@@ -74,7 +85,7 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
         {greeting(now)}
         {firstName ? `, ${firstName}` : ""}
       </h1>
-      <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted-foreground">{summary(todo.length)}</p>
+      <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted-foreground">{summary(todo.length, workspace.automation_enabled)}</p>
 
       <dl className="mt-10 grid grid-cols-3 gap-6 border-y py-6">
         {stats.map((s) => (
@@ -84,6 +95,18 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
           </div>
         ))}
       </dl>
+
+      {(contacts?.length ?? 0) > 0 && (
+        <div className="mt-10">
+          <AutomationPanel
+            slug={slug}
+            enabled={workspace.automation_enabled}
+            overview={overview}
+            lastError={workspace.automation_last_error}
+            repliesCheckedAt={workspace.replies_checked_at}
+          />
+        </div>
+      )}
 
       <div className="mt-14">
         {(contacts?.length ?? 0) === 0 ? (

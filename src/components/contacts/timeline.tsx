@@ -3,6 +3,7 @@ import {
   BellIcon,
   CalendarClockIcon,
   MailCheckIcon,
+  MailOpenIcon,
   MailXIcon,
   StickyNoteIcon,
   UserPlusIcon,
@@ -19,6 +20,7 @@ const ICONS: Record<ActivityType, LucideIcon> = {
   email_scheduled: CalendarClockIcon,
   email_sent: MailCheckIcon,
   email_failed: MailXIcon,
+  email_received: MailOpenIcon,
   next_action_set: BellIcon,
 };
 
@@ -70,12 +72,25 @@ function Entry({ activity, email }: { activity: Activity; email?: Email }) {
           {email?.error && <p className="mt-1 text-muted-foreground">{email.error}</p>}
         </>
       );
+    case "email_received":
+      return (
+        <details className="group" open>
+          <summary className="cursor-pointer list-none">
+            <span className="font-medium">Ha risposto</span>
+            <span className="text-muted-foreground"> · {str(p.subject)}</span>
+          </summary>
+          {email && (
+            <p className="mt-3 rounded-lg border bg-card p-4 leading-relaxed whitespace-pre-line">{email.body}</p>
+          )}
+        </details>
+      );
     case "email_sent":
       return (
         <details className="group">
           <summary className="cursor-pointer list-none">
             <span className="text-muted-foreground">
-              {emailKindLabel((str(p.kind) as EmailKind | null) ?? "custom")} inviata ·{" "}
+              {emailKindLabel((str(p.kind) as EmailKind | null) ?? "custom")} inviata
+              {p.automated === true ? " in automatico" : ""} ·{" "}
             </span>
             <span className="font-medium underline-offset-4 group-open:no-underline hover:underline">
               {str(p.subject)}

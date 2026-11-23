@@ -72,9 +72,24 @@ begin
   assert c.stage_id = v_stage1, 'la fase avanza dopo l''invio';
   assert c.last_contacted_at is not null, 'ultimo contatto valorizzato';
   assert c.next_action = 'Follow-up' and c.next_action_at is not null, 'promemoria impostato';
+  assert c.outbound_count = 1, 'conteggio delle email inviate';
+
+  -- Risposta del contatto: la sequenza si ferma e nasce un promemoria.
+  insert into public.emails (workspace_id, contact_id, direction, status, subject, body, to_email, sent_at, provider_message_id)
+  values (v_ws, v_contact, 'inbound', 'sent', 'Re: Oggetto', 'Grazie', 'info@example.com', now(), '<msg-1@example.com>');
+  select * into c from public.contacts where id = v_contact;
+  assert c.replied_at is not null, 'risposta registrata';
+  assert c.next_action like 'Ha risposto%', 'promemoria alla risposta';
+  assert c.outbound_count = 1, 'una risposta non conta come invio';
+  begin
+    insert into public.emails (workspace_id, contact_id, direction, status, subject, body, to_email, provider_message_id)
+    values (v_ws, v_contact, 'inbound', 'sent', 'Re: Oggetto', 'Grazie', 'info@example.com', '<msg-1@example.com>');
+    raise exception 'attesa violazione di unicità';
+  exception when unique_violation then null;
+  end;
 
   assert (select array_agg(type::text order by type::text) from public.activities where contact_id = v_contact)
-       = array['contact_created','email_sent','next_action_set','note_added','stage_changed'],
+       = array['contact_created','email_received','email_sent','next_action_set','next_action_set','note_added','stage_changed'],
        'storico completo';
 
   -- Lo storico non è scrivibile dai client.

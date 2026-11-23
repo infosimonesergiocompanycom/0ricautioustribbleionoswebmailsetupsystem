@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AutomationForm } from "@/components/settings/automation-form";
 import { BrandForm } from "@/components/settings/brand-form";
 import { EmailSettingsForm, type EmailSettingsView } from "@/components/settings/email-settings-form";
 import { listStages, requireWorkspace } from "@/lib/session";
@@ -60,6 +61,14 @@ export default async function SettingsPage({ params, searchParams }: PageProps<"
         intro="Le email partono dal dominio dell'azienda, con il mittente e la firma indicati qui."
       >
         <EmailSettingsForm slug={slug} settings={view} canEdit={canEdit} />
+      </Section>
+
+      <Section
+        id="automation"
+        title="Automazione"
+        intro="Il segretario scrive e invia da solo il primo contatto a ogni nuovo lead e i solleciti a chi non risponde. Si ferma alla prima risposta e te la segnala in «Oggi»."
+      >
+        <AutomationForm workspace={workspace} canEdit={canEdit} emailProvider={settings?.provider ?? null} />
       </Section>
 
       <Section

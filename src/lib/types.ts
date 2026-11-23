@@ -12,6 +12,7 @@ export type ActivityType =
   | "email_scheduled"
   | "email_sent"
   | "email_failed"
+  | "email_received"
   | "next_action_set";
 
 export interface Workspace {
@@ -25,6 +26,12 @@ export interface Workspace {
   email_examples: string | null;
   signature: string | null;
   language: string;
+  automation_enabled: boolean;
+  follow_up_after_days: number;
+  max_follow_ups: number;
+  daily_send_limit: number;
+  replies_checked_at: string | null;
+  automation_last_error: string | null;
   created_at: string;
 }
 
@@ -67,6 +74,9 @@ export interface Contact {
   last_contacted_at: string | null;
   next_action: string | null;
   next_action_at: string | null;
+  automation_paused: boolean;
+  replied_at: string | null;
+  outbound_count: number;
   created_at: string;
 }
 
@@ -87,6 +97,7 @@ export interface Email {
   body: string;
   to_email: string;
   ai_generated: boolean;
+  automated: boolean;
   scheduled_at: string | null;
   sent_at: string | null;
   error: string | null;

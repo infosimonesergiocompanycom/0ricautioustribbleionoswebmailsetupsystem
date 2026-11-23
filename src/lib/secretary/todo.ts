@@ -40,8 +40,21 @@ function kindFor(contact: Contact, stage: PipelineStage): Exclude<EmailKind, "cu
  *  2. ha un'azione pianificata in futuro: non compare, la decisione è già presa;
  *  3. non è mai stato contattato;
  *  4. è in silenzio da più giorni di quanti ne ammette la sua fase.
+ *
+ * Con l'automazione accesa i punti 3 e 4 li gestisce la sequenza automatica:
+ * restano in agenda le risposte ricevute (che arrivano come azione
+ * pianificata), i contatti esclusi o senza email e le sequenze concluse.
  */
-export function buildTodoList(contacts: Contact[], stages: PipelineStage[], now: Date = new Date()): TodoItem[] {
+export interface AutomationRules {
+  maxFollowUps: number;
+}
+
+export function buildTodoList(
+  contacts: Contact[],
+  stages: PipelineStage[],
+  now: Date = new Date(),
+  automation?: AutomationRules,
+): TodoItem[] {
   const stageById = new Map(stages.map((s) => [s.id, s]));
   const items: TodoItem[] = [];
 
@@ -65,6 +78,23 @@ export function buildTodoList(contacts: Contact[], stages: PipelineStage[], now:
             : `${action}: previsto per oggi.`,
         weight: late,
       });
+      continue;
+    }
+
+    // Con l'automazione accesa, primo contatto e solleciti partono da soli:
+    // in agenda resta solo chi è fuori dalla sequenza.
+    if (automation && contact.email && !contact.automation_paused) {
+      if (contact.outbound_count > automation.maxFollowUps && contact.last_contacted_at) {
+        const silence = daysBetween(new Date(contact.last_contacted_at), now);
+        if (silence >= (stage.follow_up_days ?? 4)) {
+          items.push({
+            ...base,
+            urgency: "suggested",
+            reason: `Nessuna risposta dopo ${plural(contact.outbound_count, "email", "email")}: decidi se insistere di persona o chiudere.`,
+            weight: silence,
+          });
+        }
+      }
       continue;
     }
 

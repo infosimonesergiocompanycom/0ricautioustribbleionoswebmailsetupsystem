@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ContactControls } from "@/components/contacts/contact-controls";
 import { NoteForm } from "@/components/contacts/note-form";
 import { Timeline } from "@/components/contacts/timeline";
 import { EmailComposer } from "@/components/email/email-composer";
@@ -138,6 +139,12 @@ export default async function ContactPage({ params, searchParams }: PageProps<"/
             </Field>
             <Field label="Creato il">{formatDate(contact.created_at)}</Field>
           </dl>
+          <ContactControls
+            slug={slug}
+            contactId={contact.id}
+            paused={contact.automation_paused}
+            replied={Boolean(contact.replied_at)}
+          />
         </aside>
       </div>
     </div>

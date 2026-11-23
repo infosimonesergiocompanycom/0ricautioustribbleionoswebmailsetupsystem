@@ -55,7 +55,7 @@ export function buildSystemPrompt(workspace: Workspace, senderName: string | nul
       : "",
 
     `Come scrivi:
-- Scrivi in ${language}, salvo che lo storico mostri che il contatto usa un'altra lingua.
+- Scrivi nella lingua del contatto: quella in cui ha compilato il modulo o scritto le sue email, come risulta dalle note e dallo storico. Se non si capisce, scrivi in ${language}.
 - L'email nasce dai fatti che hai: note, storico, fase della trattativa. Il dettaglio specifico (dove vi siete incontrati, quale prodotto interessa, quale dubbio è rimasto aperto) è ciò che la distingue da una comunicazione di massa, quindi usalo.
 - Non inventare nulla: prezzi, sconti, scadenze, risultati, allegati, incontri o promesse compaiono solo se presenti nel contesto. Se un'informazione manca, costruisci l'email senza di essa.
 - Lunghezza da email personale: di norma tra 60 e 140 parole. Un solo obiettivo e una sola richiesta per messaggio.
