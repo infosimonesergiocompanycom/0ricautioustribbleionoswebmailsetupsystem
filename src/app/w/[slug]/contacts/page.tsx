@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SearchIcon } from "lucide-react";
+import { FileUpIcon, SearchIcon } from "lucide-react";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
 import { ViewTabs } from "@/components/pipeline/view-tabs";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,16 @@ export default async function ContactsPage({ params, searchParams }: PageProps<"
             {contacts?.length ?? 0} {q ? "risultati" : `in ${workspace.name}`}
           </p>
         </div>
-        <NewContactDialog slug={slug} stages={stages} defaultOpen={query.new === "1"} />
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/w/${slug}/contacts/import`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            <FileUpIcon className="size-4" />
+            Importa
+          </Link>
+          <NewContactDialog slug={slug} stages={stages} defaultOpen={query.new === "1"} />
+        </div>
       </header>
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
