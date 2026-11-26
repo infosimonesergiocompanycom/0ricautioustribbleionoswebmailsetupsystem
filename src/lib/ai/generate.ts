@@ -51,7 +51,9 @@ async function resolveClient(): Promise<{ client: Anthropic; model: string }> {
   if (!apiKey) throw new AIGenerationError("Assistente AI non configurato: imposta ANTHROPIC_API_KEY.");
 
   return {
-    client: new Anthropic({ apiKey, baseURL: "https://ai-gateway.vercel.sh" }),
+    // Il gateway si aspetta `Authorization: Bearer`: è ciò che invia `authToken`
+    // (con `apiKey` l'SDK userebbe l'header x-api-key, che il token OIDC non supera).
+    client: new Anthropic({ authToken: apiKey, apiKey: null, baseURL: "https://ai-gateway.vercel.sh" }),
     model: MODEL.includes("/") ? MODEL : `anthropic/${MODEL}`,
   };
 }
@@ -132,7 +134,10 @@ export async function generateEmailDraft(ctx: EmailContext, revision?: Revision)
   } catch (error) {
     if (error instanceof AIGenerationError) throw error;
     if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
-      throw new AIGenerationError("Accesso all'assistente AI rifiutato: chiave non valida o AI Gateway non attivo sul conto Vercel.");
+      console.error("Accesso AI rifiutato", error.status, error.message);
+      throw new AIGenerationError(
+        `Accesso all'assistente AI rifiutato (${error.status}): ${error.message.slice(0, 200)}`,
+      );
     }
     if (error instanceof Anthropic.APIError && error.status === 402) {
       throw new AIGenerationError("Credito AI esaurito sul conto Vercel: aggiungi credito in Vercel → AI Gateway.");
